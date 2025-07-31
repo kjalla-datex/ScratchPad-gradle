@@ -1,7 +1,10 @@
 package org.example;
 
+
+import io.valkey.CommandObject;
 import io.valkey.CommandObjects;
-import io.valkey.search.Schema;
+import io.valkey.search.Query;
+import io.valkey.search.SearchResult;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -19,18 +22,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
-import static io.valkey.RedisProtocol.RESP2;
-import static io.valkey.RedisProtocol.RESP3;
-
-/**
- * A simple Java application to test Valkey with TLS connection.
- * It connects to a Valkey instance, performs basic operations, and demonstrates the use of SSL.
- */
-public class ValkeyTlsTester {
+public class ValkeySearchTlsTester {
 
     // can be static or singleton, thread safety.
     private static io.valkey.JedisPool jedisPool;
@@ -48,82 +41,34 @@ public class ValkeyTlsTester {
             // jedisPool = new io.valkey.JedisPool(config, "localhost", 6381, true, new MySSLSocketFactory(), (SSLParameters)null, (HostnameVerifier)null);
             jedisPool = new io.valkey.JedisPool(config, valkeyHost, valkeyPort, true, new MySSLSocketFactory(), (SSLParameters)null, (HostnameVerifier)null);
 
-
-
-
             try (io.valkey.Jedis jedis = jedisPool.getResource()) {
 
                 CommandObjects commandObjects = new CommandObjects();
                 commandObjects.setProtocol(jedis.getConnection().getRedisProtocol());
 
 
-                String keyPrefix = "esp:page:";
-                String key = keyPrefix + "1";
+                //  FT.SEARCH my_index "@timestamp:[0 1721299200]=>[KNN 100000 @vector $query_vector]" PARAMS 2 query_vector "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 
-                Map<String, String> map = new HashMap<>();
-                map.put("cust", "datex");
-                map.put("env", "non-prod");
-                map.put("correlationId", UUID.randomUUID().toString());
-                map.put("timestamp", "" + (System.currentTimeMillis() / 1000));
-                map.put("embedding", "" + (System.currentTimeMillis() / 1000));
-                map.put("embedding-z", "" + (System.currentTimeMillis() / 1000));
+                float[] queryVector = new float[16]; // Example: 16 zeros, adjust size as needed
 
+                String queryString = "@timestamp:[0 1721299200]=>[KNN 100000 @vector $query_vector]";
+                Query query = new Query(queryString);
+                query.addParam("query_vector", queryVector);
 
+                commandObjects.setProtocol(jedis.getConnection().getRedisProtocol());
 
-                // jedis.hdel(keyPrefix + "1", "embedding");
-                jedis.hset(key, map);
-                jedis.getConnection().executeCommand(commandObjects.hset(key, map));
-//                jedis.zadd(key, (double)(System.currentTimeMillis() / 1000), "timestamp-zset");
-//                jedis.del(key);
-//                Object result = jedis.eval("hset post:1 title \"hello world\" body \"this is a cool document\"");
-//                System.out.println("HSET result: " + result);
-//                result = jedis.eval("hset post:2 title \"goodbye everybody\" body \"this is the best document\"");
-                System.out.println(jedis.hgetAll(key));
-
-                commandObjects.ftDropIndex(keyPrefix);
-
-                Schema schema = new Schema();
-                schema.addTagField("cust");
-// Add a vector field (example: 128 dimensions, FLOAT32, FLAT index)
-
-                Map<String, Object> attributes = new HashMap<>();
-                attributes.put("TYPE", "FLOAT32");
-                attributes.put("DIM", 1);
-                attributes.put("DISTANCE_METRIC", "L2"); // or "L2", "IP" as needed
-
-//                schema.addVectorField("embedding", Schema.VectorField.VectorAlgo.HNSW, attributes);
-//                schema.addVectorField("embedding", Schema.VectorField.VectorAlgo.HNSW, 128, Schema.VectorIndexType.FLAT);
-
-//                try {
-//                    Object result = jedis.getConnection().executeCommand(
-//                            commandObjects.ftCreate(keyPrefix, IndexOptions.defaultOptions(), schema)
-//                    );
-//                    System.out.println("Index created: " + result);
-//                }
-//                catch (Throwable t) {
-//                    System.err.println("Error creating index: " + t.getMessage());
-//                }
-
-
-//                Query query = new Query("@timestamp:[" + 0 + " " + (System.currentTimeMillis() / 1000) + "]");
-//                Object searchResult = jedis.getConnection().executeCommand(commandObjects.ftSearch(keyPrefix, query));
-//                System.out.println("Search result: " + searchResult);
+                CommandObject<SearchResult> commandObject = commandObjects.ftSearch("my_index", query);
+                SearchResult result = jedis.getConnection().executeCommand(commandObject);
+                System.out.println(result);
 
             }
-
-            // jedis.getConnection().executeCommand(commandObjects.ftSearch())
-
-
-
-
             jedisPool.close();
         }
         catch (Throwable t) {
             t.printStackTrace();
         }
     }
-
 
     public static class MySSLSocketFactory extends SSLSocketFactory {
         SSLContext sslContext = SSLContext.getInstance("TLS");
