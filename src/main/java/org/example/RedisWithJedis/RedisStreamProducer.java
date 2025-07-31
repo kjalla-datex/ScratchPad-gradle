@@ -22,4 +22,3 @@ public class RedisStreamProducer {
         System.out.println("Message published with ID: " + id);
     }
 }
-
